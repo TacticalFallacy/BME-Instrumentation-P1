@@ -31,12 +31,12 @@ void loop() {
     cheek += analogRead(cheekPin);
     delay(1);
   }
-  eyebrow = eyebrow / window;
+//   eyebrow = eyebrow / window;
   if (eyebrow < eyebrow_min) {
     eyebrow_min = eyebrow;
   }
   eyebrow -= eyebrow_min;
-  cheek = cheek / window;
+//   cheek = cheek / window;
   if (cheek < cheek_min) {
     cheek_min = cheek;
   }
