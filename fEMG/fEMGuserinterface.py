@@ -2,8 +2,6 @@
 # coding: utf-8
 
 # In[1]:
-
-
 #combined
 import serial
 import time
@@ -23,13 +21,14 @@ from tkinter import messagebox
 
 arduino = serial.Serial(port='COM4', baudrate=9600, timeout=1)
 time.sleep(2)
+data = arduino.readline()
 size = 10
 x_vec = np.ones(size)
 y_vec = np.ones(size)
 ZMrelax = 0 #peak corresponding with relaxed ZM
-ZMcontract = 0 #peak corresponding with contracted ZM
+ZMcontract = 2000 #peak corresponding with contracted ZM
 CSrelax = 0 #peak corresponding with relaxed CS
-CSraised = 0 #peak corresponding with contracted CS
+CSraised = 2000 #peak corresponding with contracted CS
 
 fig = Figure(figsize=(13, 6))
 ax = fig.add_subplot(111)
@@ -91,17 +90,21 @@ def calibration(labels):
 #    return eyebrow, cheek
 
 def live_plotter(identifier='', pause_time=0.1):
-    global x_vec, y_vec
+    global x_vec, y_vec, ZMrelax, ZMcontract, CSrelax, CSraised
     eyebrow, cheek = read()
     x_vec = np.append(x_vec[1:], eyebrow)
     y_vec = np.append(y_vec[1:], cheek)
     ax.clear()
     ax.set_xlabel('Eyebrow')
     ax.set_ylabel('Cheek')
-    ax.set_xlim([0, 1024])
-    ax.set_ylim([0, 1024])
+    ax.set_xlim([0, 10240])
+    ax.set_ylim([0, 10240])
+    ax.axvline(x=CSrelax,dashes=(5,3),label='Brow Relaxed',color='blue')
+    ax.axvline(x=CSraised,dashes=(5,3),label='Brow Raised',color='black')
+    ax.axhline(y=ZMrelax,dashes=(5,3),label='Cheek Relaxed',color='purple')
+    ax.axhline(y=ZMcontract,dashes=(5,3),label='Cheek Contracted',color='orange')
     ax.plot(x_vec, y_vec)
-
+    ax.legend()
 
 # In[3]:
 
@@ -114,7 +117,6 @@ LARGEFONT =("Verdana", 35)
 x_vec = np.zeros(size)
 y_vec = np.zeros(size)
 
-
 class tkinterApp(Tk):
      
     # __init__ function for class tkinterApp
@@ -122,6 +124,9 @@ class tkinterApp(Tk):
          
         # __init__ function for class Tk
         Tk.__init__(self, *args, **kwargs)
+        
+        self.browclassifier = StringVar(value="Hello")
+        self.cheekclassifier = StringVar()
          
         # creating a container
         container = Frame(self) 
@@ -147,12 +152,29 @@ class tkinterApp(Tk):
             frame.grid(row = 0, column = 0, sticky ="nsew")
   
         self.show_frame(StartPage)
+        self.update_labels()
   
     # to display the current frame passed as
     # parameter
     def show_frame(self, cont):
         frame = self.frames[cont]
         frame.tkraise()
+        
+    def update_labels(self):
+        if sum(y_vec > (ZMcontract-ZMrelax)+ZMrelax) > 7:
+            self.browclassifier.set("Brow: Contracted")
+        elif sum(y_vec < (ZMcontract-ZMrelax)+ZMrelax) > 7:
+            self.browclassifier.set("Brow: Relaxed")
+        else:
+            self.browclassifier.set("Brow: Unclear")
+        if sum(x_vec > (CSraised-CSrelax)+CSrelax) > 7:
+            self.cheekclassifier.set("Cheek: Raised")
+        elif sum(x_vec < (CSraised-CSrelax)+CSrelax) > 7:
+            self.cheekclassifier.set("Cheek: Relaxed")
+        else:
+            self.cheekclassifier.set("Cheek: Unclear")
+        self.after(1000, self.update_labels)
+        
   
 # first window frame startpage
   
@@ -174,6 +196,11 @@ class StartPage(Frame):
         # putting the button in its place by
         # using grid
         button2.grid(row = 2, column = 1, padx = 10, pady = 10)
+        
+        cheeklabel = Label(self, textvariable = controller.cheekclassifier)
+        cheeklabel.grid(row=1,column = 2, padx=10, pady=10)
+        browlabel = Label(self, textvariable = controller.browclassifier)
+        browlabel.grid(row=2,column = 2, padx=10, pady=10)
         
         canvas = FigureCanvasTkAgg(fig, master=self)
         canvas.draw()
@@ -222,3 +249,5 @@ ani = animation.FuncAnimation(fig,live_plotter, interval=100)
 app = tkinterApp()
 app.mainloop()
 
+# In[4]:
+arduino.close()
