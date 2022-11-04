@@ -20,11 +20,20 @@ from tkinter import *
 from tkinter import messagebox
 import random
 
+import pandas as pd
+import datetime
+
 relaxcheek = 3 #corresponding with relaxed cheek
 relaxbrow = 3 #corresponding with relaxed brow
 restHR = 60 #resting heart-rate
-maxcheek = 0 #maximum measured brow value
-maxbrow = 0 #maximum measured brow value
+maxcheek = 1 #maximum measured brow value
+maxbrow = 1 #maximum measured brow value
+
+record = []
+recording = False
+browbuffer = []
+cheekbuffer = []
+HRbuffer = []
 
 def pause():
     global pauseplay
@@ -33,17 +42,36 @@ def pause():
     else:
         pauseplay = True
         
+def recordonoff():
+    global recording
+    global record
+    if recording:
+        recording = False
+        name = datetime.datetime.now().strftime("%H-%M-%S.csv")
+        df = pd.DataFrame(record, 
+                          columns = ['Time','Brow', 'Cheek', 
+                                     'Brow Max', 'Cheek Max', 
+                                     'Brow Relax','Cheek Relax',
+                                     'Valence Choice'])
+        df.to_csv(name, index=False)
+        record = []
+        recordvar.set("Recording:OFF")
+        print('Recording saved as ' + name)
+    else:
+        recording = True
+        recordvar.set("Recording:ON")
+        
 def calibrate():
     global relaxcheek, relaxbrow, restHR
-    cheeklist = np.zeros(10)
-    browlist = np.zeros(10)
-    HRlist = np.zeros(10)
+    cheeklist = np.zeros(20)
+    browlist = np.zeros(20)
+    HRlist = np.zeros(20)
     messagebox.showinfo('Calibration', 'Maintain a relaxed, neutral expression')
-    for i in range(0,10):
+    for i in range(0,20):
         eyebrow, cheek, HR = read()
         browlist[i] = eyebrow
         cheeklist[i] = cheek
-        HR[i] = HR
+        HRlist[i] = HR
         time.sleep(0.2)
     relaxcheek = np.median(cheeklist)
     relaxbrow = np.median(browlist)
@@ -63,8 +91,8 @@ def HRmodechange():
 # read eyebrow and cheek data
 def read():
     global HRmode
-    eyebrow = random.randint(10,40)
-    cheek = random.randint(10,40)
+    fEMG.reset_input_buffer()
+    heartrate.reset_input_buffer()
     data = fEMG.readline()
     HR = heartrate.readline()
     if HRmode:
@@ -72,6 +100,8 @@ def read():
             data_decoded = HR.decode()
             num_list = data_decoded.strip().split()
             HRreading = int(num_list[0])
+        else:
+            HRreading = 0
     else:
         if HR:
             HRreading = 1
@@ -82,11 +112,14 @@ def read():
         num_list = data_decoded.strip().split()
         eyebrow = int(num_list[0])
         cheek = int(num_list[1])
+    else:
+        eyebrow = 0
+        cheek = 0
     return eyebrow, cheek, HRreading
 
 #function that classifies positive or negative based on relative values
 def classify(eyebrow, cheek, HRreading):
-    global HRmode
+    global record
     if HRmode:
         HRmultiplier = HRreading/restHR
         HRvar.set(str(round(HRreading)))
@@ -112,29 +145,41 @@ def classify(eyebrow, cheek, HRreading):
             axes[0].axvline(x=-classifier*maxbrow)
         else:
             axes[1].axvline(x=classifier*maxcheek)
+    if recording:
+        time = datetime.datetime.now().strftime("%H:%M:%S")
+        record.append([time, eyebrow,cheek,maxbrow,maxcheek,relaxbrow, relaxcheek, classlabel.get()])
 
 #function that plots live data
 def live_plotter(identifier='', pause_time=0.1):
     global pauseplay
     global maxcheek, maxbrow
+    global browbuffer, cheekbuffer, HRbuffer
     if pauseplay:
         eyebrow, cheek, HRreading = read()
-        axes[0].clear()
-        axes[1].clear()
-        if HRmode:
-            HRmultiplier = HRreading/restHR
-        else:
-            HRmultiplier = 1
-        if cheek*HRmultiplier > maxcheek:
-            maxcheek = cheek*HRmultiplier
-        if eyebrow*HRmultiplier > maxbrow:
-            maxbrow = eyebrow*HRmultiplier
-        axes[0].barh(0, eyebrow*HRmultiplier,  1,  align='center', color=color_red, zorder=10)
-        axes[0].barh(0, eyebrow,  1,  align='center', color=color_blue, zorder=10)
-        axes[1].barh(0, cheek*HRmultiplier,  1,  align='center', color=color_red, zorder=10)
-        axes[1].barh(0, cheek, 1, align='center', color=color_blue, zorder=10)
-        axissettings()
-        classify(eyebrow,cheek,HRreading)
+        #print(datetime.datetime.now())
+        browbuffer.append(eyebrow)
+        cheekbuffer.append(cheek)
+        HRbuffer.append(HRreading)
+        if len(browbuffer) == 1:
+            axes[0].clear()
+            axes[1].clear()
+            if HRmode:
+                HRmultiplier = HRreading/restHR
+            else:
+                HRmultiplier = 1
+            if cheek*HRmultiplier > maxcheek:
+                maxcheek = cheek*HRmultiplier
+            if eyebrow*HRmultiplier > maxbrow:
+                maxbrow = eyebrow*HRmultiplier
+            axes[0].barh(0, eyebrow*HRmultiplier,  1,  align='center', color=color_red, zorder=10)
+            axes[0].barh(0, eyebrow,  1,  align='center', color=color_blue, zorder=10)
+            axes[1].barh(0, cheek*HRmultiplier,  1,  align='center', color=color_red, zorder=10)
+            axes[1].barh(0, cheek, 1, align='center', color=color_blue, zorder=10)
+            axissettings()
+            classify(eyebrow,cheek,HRreading)
+            browbuffer.clear() 
+            cheekbuffer.clear()
+            HRbuffer.clear()
         
 
 #reset axis settings
@@ -154,21 +199,14 @@ def axissettings():
     axes[0].axvline(x=relaxbrow, dashes = (4, 2), color = 'black')
     axes[1].axvline(x=relaxcheek, dashes = (4, 2), color = 'black')
         
-# def read():
-#     eyebrow = random.random()*50
-#     cheek = random.random()*50
-#     HR = 60 + random.random()*50
-#     return eyebrow, cheek, HR
-
 HRmode = False
 pauseplay = True
 
-fEMG = serial.Serial(port='COM4', baudrate=9600, timeout=1)
-heartrate = serial.Serial(port='COM5', baudrate=9600, timeout=1)
+fEMG = serial.Serial(port='COM6', baudrate=9600, timeout=1)
+heartrate = serial.Serial(port='COM5', baudrate=9600, timeout=0.1)
 time.sleep(2)
 print(heartrate.readline().decode())
 data = fEMG.readline()
-#
 
 #customization settings
 font_color = '#525252'
@@ -193,6 +231,7 @@ canvas.get_tk_widget().grid(row = 2, column = 0, padx = 10, pady = 10)
 classlabel = StringVar(value="Hello")
 HRlabelvar = StringVar(value='HR Integration: OFF')
 HRvar = StringVar(value='')
+recordvar = StringVar(value = "Recording:OFF")
 
 title = Label(emotrack, text="Emotion Sensor", font = LARGEFONT)
 title.grid(row=0,column=0,padx=10,pady=10)
@@ -202,6 +241,8 @@ label = Label(emotrack, bg='white', textvariable=classlabel, font = MEDFONT)
 label.grid(row=1,column=0,padx=10,pady=10)
 HRlabel = Label(emotrack, textvariable=HRvar, font = MEDFONT)
 HRlabel.grid(row=1,column=1,padx=10,pady=10)
+recordlabel = Label(emotrack, textvariable = recordvar, font = MEDFONT)
+recordlabel.grid(row=2, column = 1, padx=10, pady=10)
 
 button = Button(emotrack, text="Pause/Play", command = pause)
 button.grid(row=3,column=0,padx=10,pady=10)
@@ -209,7 +250,10 @@ button = Button(emotrack, text = "Calibrate", command = calibrate)
 button.grid(row=4,column=0,padx=10,pady=10)
 button = Button(emotrack, text = "HR Mode", command = HRmodechange)
 button.grid(row=5,column=0,padx=10,pady=10)
+recordbutton = Button(emotrack, text = 'Start/Stop Recording', command = recordonoff)
+recordbutton.grid(row=3, column = 1, padx = 10, pady=10)
 
-ani = animation.FuncAnimation(fig,live_plotter, interval=1000)
+ani = animation.FuncAnimation(fig,live_plotter, interval=250)
 emotrack.mainloop()
+fEMG.close()
 heartrate.close()
